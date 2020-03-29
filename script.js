@@ -26,7 +26,7 @@ async function run() {
   let lastUpdate = undefined;
   let confirmed = 0;
   let growthRatioRunningAverage = 0;
-  printRow(output, 'Last Update', 'Confirmed', 'Delta Confirmed', 'Growth %', 'Avg Grown %');
+  printRow(output, 'Last Update', 'Confirmed', 'Delta Confirmed', 'Growth %/day', 'Avg Growth %/day');
   for (const row of australia) {
     // console.log(row.state, row.lastUpdate, row.confirmed);
     const isNewData = !(row.lastUpdate <= lastUpdate);
