@@ -25,8 +25,8 @@ async function run() {
 
   let lastUpdate = undefined;
   let confirmed = 0;
-  let growthRatioRunningAverage = 0;
-  printRow(output, 'Last Update', 'Confirmed', 'Delta Confirmed', 'Growth %/day', 'Avg Growth %/day');
+  let averagingWindow = [];
+  printRow(output, 'Last Update', 'Confirmed', 'Delta Confirmed', 'Growth %/day', 'Avg Growth %/5days');
   for (const row of australia) {
     // console.log(row.state, row.lastUpdate, row.confirmed);
     const isNewData = !(row.lastUpdate <= lastUpdate);
@@ -35,7 +35,9 @@ async function run() {
       const deltaConfirmed = row.confirmed - (confirmed || 0);
       const deltaDays = lastUpdate ? (row.lastUpdate - lastUpdate) / 86_400_000 : 1;
       const growthRatio = (confirmed ? deltaConfirmed / confirmed : 0) / deltaDays;
-      growthRatioRunningAverage = growthRatioRunningAverage * 0.9 + 0.1 * growthRatio;
+      averagingWindow.push(growthRatio);
+      if (averagingWindow.length > 5) averagingWindow.shift();
+      const growthRatioRunningAverage = averagingWindow.reduce((a, b) => a + b, 0) / averagingWindow.length;
       confirmed = row.confirmed;
       printRow(output, row.lastUpdate.toISOString(), confirmed, deltaConfirmed, growthRatio * 100, growthRatioRunningAverage * 100);
       lastUpdate = row.lastUpdate;
