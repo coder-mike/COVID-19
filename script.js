@@ -10,41 +10,61 @@ run();
 
 async function run() {
 
-  const australia = [];
-
-  for (const f of files) {
-    const data = await getDataForDay(path.join(dir, f));
-    australia.push(...data
-      .map(preprocessRow)
-      .filter(d => d.lastUpdate && d.confirmed && d.country === 'Australia' && d.state === 'Victoria'))
-  }
-
-  australia.sort((a, b) => a.lastUpdate - b.lastUpdate);
+  const locations = [
+    { name: 'VIC', filter: d => d.country === 'Australia' && d.state === 'Victoria' },
+    { name: 'NSW', filter: d => d.country === 'Australia' && d.state === 'New South Wales' },
+    { name: 'AUS', filter: d => d.country === 'Australia' },
+    { name: 'SAN', filter: d => d.country === 'US' && d.state === 'California' && d.Admin2 === 'San Diego' },
+    { name: 'CAL', filter: d => d.country === 'US' && d.state === 'California' },
+    { name: 'US', filter: d => d.country === 'US' },
+    { name: 'SA', filter: d => d.country === 'US' && d.state === 'California' },
+  ];
 
   const output = [];
 
-  let lastUpdate = undefined;
-  let confirmed = 0;
-  let averagingWindow = [];
-  printRow(output, 'Last Update', 'Confirmed', 'Delta Confirmed', 'Growth %/day', 'Avg Growth %/5days');
-  for (const row of australia) {
-    // console.log(row.state, row.lastUpdate, row.confirmed);
-    const isNewData = !(row.lastUpdate <= lastUpdate);
-    if (isNewData) {
-      // console.log(row)
-      const deltaConfirmed = row.confirmed - (confirmed || 0);
-      const deltaDays = lastUpdate ? (row.lastUpdate - lastUpdate) / 86_400_000 : 1;
-      const growthRatio = (confirmed ? deltaConfirmed / confirmed : 0) / deltaDays;
-      averagingWindow.push(growthRatio);
-      if (averagingWindow.length > 5) averagingWindow.shift();
-      const growthRatioRunningAverage = averagingWindow.reduce((a, b) => a + b, 0) / averagingWindow.length;
-      confirmed = row.confirmed;
-      printRow(output, row.lastUpdate.toISOString(), confirmed, deltaConfirmed, growthRatio * 100, growthRatioRunningAverage * 100);
-      lastUpdate = row.lastUpdate;
-    }
+  printRow(output, 'Day', ...locations.map(l => l.name));
+
+  for (const f of files.filter(f => f.endsWith('.csv'))) {
+    const rawData = await getDataForDay(path.join(dir, f))
+    const data = rawData.map(preprocessRow);
+    console.assert(f.endsWith('.csv'));
+    const [,m, d, y] = /^(\d\d)-(\d\d)-(\d\d\d\d).csv$/.exec(f);
+    const day = `${y}-${m}-${d}`;
+    printRow(output, day, ...locations.map(l => analyzeDay(l, data).averageGrowthRatio * 100));
   }
 
   fs.writeFileSync('output.csv', output.join('\n'));
+}
+
+function analyzeDay(location, data) {
+  let prevTotalActive = location.prevTotalActive || 0;
+  let averagingWindow = location.averagingWindow || [];
+  let lastUpdate = location.lastUpdate || [];
+
+  const dataForLocation = data.filter(location.filter);
+  let totalActive = 0;
+  for (const row of dataForLocation) {
+    totalActive += row.active;
+    lastUpdate = row.lastUpdate;
+  }
+
+  const deltaActive = totalActive - prevTotalActive;
+  const growthRatio = prevTotalActive ? deltaActive / prevTotalActive : 0;
+  averagingWindow.push(growthRatio);
+  if (averagingWindow.length > 5) averagingWindow.shift();
+  const averageGrowthRatio = averagingWindow.reduce((a, b) => a + b, 0) / averagingWindow.length;
+
+  location.averagingWindow = averagingWindow;
+  location.prevTotalActive = totalActive;
+  location.lastUpdate = lastUpdate;
+
+  return {
+    totalActive,
+    deltaActive,
+    growthRatio,
+    averageGrowthRatio,
+    lastUpdate
+  };
 }
 
 function getDataForDay(filename) {
@@ -58,23 +78,34 @@ function getDataForDay(filename) {
 }
 
 function preprocessRow(row) {
+  const active = parseIntOrZero(row.Active);
+  const confirmed = parseIntOrZero(row.Confirmed);
+  const deaths = parseIntOrZero(row.Deaths);
+  const recovered = parseIntOrZero(row.Recovered);
   return {
     ...row,
     lastUpdate: new Date(row['Last Update'] || row['Last_Update']),
-    confirmed: parseInt(row.Confirmed),
-    deaths: parseInt(row.deaths),
-    recovered: parseInt(row.recovered),
+    confirmed,
+    deaths,
+    recovered,
+    active: confirmed - deaths - recovered,
     country: row['Country/Region'] || row['Country_Region'],
     state: row['Province/State'] || row['Province_State'],
   }
 }
 
 function printRow(output, timestamp, ...values) {
-  console.log(timestamp, ...values.map(v => formatNumber(v).padStart(5)));
+  console.log(timestamp.padStart(12), ...values.map(v => formatNumber(v).padStart(6)));
   output.push([timestamp, ...values.map(formatNumber)].join(','));
 }
 
 function formatNumber(n) {
   if (typeof n === 'number') return n.toFixed(0);
   else return n;
+}
+
+function parseIntOrZero(s) {
+  const result = parseInt(s);
+  if (isNaN(result)) return 0;
+  else return result;
 }
