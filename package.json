@@ -5,7 +5,7 @@
   "main": "script.js",
   "dependencies": {
     "csv-parser": "^2.3.2",
-    "moment": "^2.24.0"
+    "moment": "^2.29.4"
   },
   "devDependencies": {},
   "scripts": {
